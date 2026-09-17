@@ -62,7 +62,17 @@ class Settings:
         self.data_dir: Path = Path(data_dir).expanduser() if data_dir else (ROOT_DIR / "data")
         self.max_workers: int = max(1, _int(os.getenv("MAX_WORKERS"), 1))
         self.max_upload_mb: int = max(1, _int(os.getenv("MAX_UPLOAD_MB"), 800))
-        self.frontend_dir: Path = ROOT_DIR / "frontend"
+
+        # 前端静态资源目录：优先 docs/（GitHub Pages 的 /docs 发布目录），兼容旧版 frontend/
+        docs_dir = ROOT_DIR / "docs"
+        self.frontend_dir: Path = docs_dir if docs_dir.exists() else (ROOT_DIR / "frontend")
+
+        # 允许跨域访问的来源（GitHub Pages 等静态站点调用本后端时必须放开）
+        # 逗号分隔；默认 "*"（任意来源，不携带 Cookie）。生产可收紧为你的 Pages 域名。
+        raw_origins = os.getenv("CORS_ORIGINS", "*").strip()
+        self.cors_origins: list[str] = (
+            ["*"] if raw_origins in {"", "*"} else [o.strip() for o in raw_origins.split(",") if o.strip()]
+        )
 
         # ---- ASR ----
         self.asr_backend: str = os.getenv("ASR_BACKEND", "faster-whisper").strip().lower()

@@ -14,6 +14,7 @@
   ];
 
   const state = {
+    apiBase: "",
     taskId: null,
     result: null,
     pollTimer: null,
@@ -70,16 +71,92 @@
       .replace(/"/g, "&quot;");
   }
 
-  async function api(path, options) {
-    const resp = await fetch(path, options);
-    let payload = null;
-    const text = await resp.text();
-    if (text) {
-      try { payload = JSON.parse(text); } catch (e) { payload = { detail: text }; }
+  /* ------------------------------------------------------- 后端地址解析 */
+  const API_BASE_KEY = "voxscript-api-base";
+
+  // 纯静态托管判定：这类域名（或 file:// 本地打开）上不存在后端服务
+  const IS_STATIC_HOST =
+    location.protocol === "file:" ||
+    /(^|\.)(github|gitee|gitlab|netlify|vercel|pages\.dev)\.(io|app|dev)$/i.test(location.hostname) ||
+    /\.github\.io$/i.test(location.hostname);
+
+  function normalizeBase(value) {
+    let base = String(value == null ? "" : value).trim();
+    if (!base || base === "/") return "";
+    if (!/^https?:\/\//i.test(base)) base = "https://" + base.replace(/^\/+/, "");
+    return base.replace(/\/+$/, "");
+  }
+
+  function resolveApiBase() {
+    let query = null;
+    try { query = new URLSearchParams(location.search).get("api"); } catch (e) { query = null; }
+    if (query !== null) {
+      const base = normalizeBase(query);
+      try { localStorage.setItem(API_BASE_KEY, base); } catch (e) { /* 忽略存储失败 */ }
+      return base;
     }
+    let stored = null;
+    try { stored = localStorage.getItem(API_BASE_KEY); } catch (e) { stored = null; }
+    if (stored !== null) return normalizeBase(stored);          // 用户显式设置过（含"留空=同源"）
+    return normalizeBase(window.VOXSCRIPT_API_BASE || "");      // 回落到 config.js 里的全站默认值
+  }
+
+  function apiUrl(path) {
+    const p = String(path || "");
+    const suffix = p.startsWith("/") ? p : "/" + p;
+    return state.apiBase ? state.apiBase + suffix : suffix;
+  }
+
+  function baseHostLabel() {
+    if (!state.apiBase) return "同源";
+    try { return new URL(state.apiBase).host; } catch (e) { return state.apiBase; }
+  }
+
+  /* 把"连不上后端"翻译成用户能看懂、能照做的提示（不静默失败） */
+  function connectionHint(url) {
+    if (!state.apiBase) {
+      if (IS_STATIC_HOST) {
+        return "当前页面运行在静态托管（GitHub Pages）上，没有可用的后端服务。" +
+          "请在上方「后端服务」中填写你自建后端的公网地址后重试；页面本身只能展示界面，无法完成转写。";
+      }
+      return `无法连接后端服务（${url}）：请确认后端已启动（python run.py），且端口与当前页面一致。`;
+    }
+    return `无法连接后端服务（${state.apiBase}）：请确认地址可公网访问、后端已启动，` +
+      "且后端允许跨域（CORS_ORIGINS 默认 *，若已收紧请把本站域名加入白名单；" +
+      "另外 http 页面访问 https 后端会被浏览器拦截）。";
+  }
+
+  async function api(path, options) {
+    const url = apiUrl(path);
+    let resp;
+    try {
+      resp = await fetch(url, options);
+    } catch (err) {
+      throw new Error(connectionHint(url));
+    }
+
+    const text = await resp.text();
+    let payload = null;
+    if (text) {
+      try { payload = JSON.parse(text); } catch (e) { payload = null; }
+    }
+
     if (!resp.ok && resp.status !== 202) {
       const detail = payload && (payload.detail || payload.message);
-      throw new Error(detail || `请求失败（HTTP ${resp.status}）`);
+      if (detail) throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      if (!payload) {
+        throw new Error(
+          `接口返回了非接口数据（HTTP ${resp.status}，${url}）。` +
+          "通常说明「后端服务」地址填错了，或者指向的是一个纯静态站点。"
+        );
+      }
+      throw new Error(`请求失败（HTTP ${resp.status}）`);
+    }
+
+    if (payload === null && text) {
+      throw new Error(
+        `接口返回的不是数据（${url}）。请检查「后端服务」地址是否指向正在运行的后端服务。`
+      );
     }
     return { resp, payload };
   }
@@ -96,9 +173,51 @@
   }
 
   /* ------------------------------------------------------------ 服务状态 */
+  function renderApiNotice(kind, message) {
+    const box = $("#apiAlert");
+    if (!box) return;
+    if (!message) { box.hidden = true; box.textContent = ""; return; }
+    box.hidden = false;
+    box.className = kind === "error" ? "alert" : "alert soft";
+    box.textContent = message;
+  }
+
+  function renderApiState(kind, text) {
+    const badge = $("#apiState");
+    if (!badge) return;
+    badge.textContent = text;
+    badge.className = "api-state" + (kind ? " is-" + kind : "");
+  }
+
+  function paintApiState() {
+    if (state.apiBase) {
+      renderApiState("", "自定义：" + baseHostLabel());
+    } else if (IS_STATIC_HOST) {
+      renderApiState("warn", "未配置（静态托管）");
+    } else {
+      renderApiState("", "同源");
+    }
+  }
+
   async function checkHealth() {
     const pill = $("#statusPill");
     const label = $("#statusText");
+    pill.classList.remove("is-ok", "is-warn", "is-bad");
+
+    // 纯静态托管 + 未配置后端：不发请求（必然失败），直接给出可读提示
+    if (!state.apiBase && IS_STATIC_HOST) {
+      pill.classList.add("is-warn");
+      label.textContent = "未配置后端";
+      pill.title = "本页运行在静态托管上，需先填写后端 API 地址";
+      renderApiState("warn", "未配置（静态托管）");
+      renderApiNotice(
+        "warn",
+        "当前页面部署在静态托管（GitHub Pages）上，只能展示界面，无法直接完成转写。" +
+        "请在上方填入你自建后端的公网地址（例如 https://your-backend.example.com）并点击「保存并测试」。"
+      );
+      return false;
+    }
+
     try {
       const { payload } = await api("/api/health");
       const warns = (payload.warnings || []).length;
@@ -106,18 +225,89 @@
       label.textContent = warns ? `服务就绪 · ${warns} 项提示` : "服务就绪";
       if (warns) {
         pill.title = payload.warnings.join("\n");
-        toast(payload.warnings[0], "err");
+        renderApiNotice("warn", "后端已连接，但有需要留意的提示：" + payload.warnings.join("；"));
       } else {
+        renderApiNotice("", "");
+      }
+      if (!warns) {
         const bits = [payload.asr_backend];
         if (payload.gpu) bits.push(payload.gpu);
         if (payload.diarization && payload.diarization.available) bits.push("说话人分离可用");
-        pill.title = bits.join(" · ");
+        pill.title = bits.filter(Boolean).join(" · ");
       }
+      renderApiState("ok", state.apiBase ? "已连接：" + baseHostLabel() : "同源已连接");
+      return true;
     } catch (err) {
       pill.classList.add("is-bad");
       label.textContent = "服务未连接";
       pill.title = String(err.message);
+      renderApiState("bad", "连接失败");
+      renderApiNotice("error", String(err.message));
+      return false;
     }
+  }
+
+  /* --------------------------------------------------- 后端地址设置面板 */
+  function applyApiBase(next, options) {
+    state.apiBase = normalizeBase(next);
+    try { localStorage.setItem(API_BASE_KEY, state.apiBase); } catch (e) { /* 忽略存储失败 */ }
+    const input = $("#apiBaseInput");
+    if (input) input.value = state.apiBase;
+    paintApiState();
+    if (!state.apiBase && IS_STATIC_HOST) {
+      // 清空配置后又回到"静态托管无后端"状态，立即给出提示
+      checkHealth();
+      return;
+    }
+    renderApiNotice("", "");
+    checkHealth().then((ok) => {
+      if (ok) {
+        if (options && options.toast) toast(`已连接后端 ${baseHostLabel()}`, "ok");
+        loadConfig();
+        loadHistory();
+      }
+    });
+  }
+
+  function initApiPanel() {
+    state.apiBase = resolveApiBase();
+    const input = $("#apiBaseInput");
+    input.value = state.apiBase;
+    paintApiState();
+
+    $("#apiSaveBtn").addEventListener("click", () => {
+      const raw = input.value.trim();
+      if (raw && !/^https?:\/\//i.test(raw) && !/^[\w.-]+(:\d+)?(\/|$)/.test(raw)) {
+        toast("地址格式看起来不对，请填完整地址，例如 https://api.example.com", "err");
+        return;
+      }
+      const next = normalizeBase(raw);
+      if (raw && next !== raw) input.value = next;
+      applyApiBase(next, { toast: true });
+    });
+
+    $("#apiResetBtn").addEventListener("click", () => {
+      applyApiBase("", { toast: true });
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); $("#apiSaveBtn").click(); }
+    });
+  }
+
+  /* 需要后端才能进行的操作，先确认后端可用，避免用户在静态站点上提交后毫无反应 */
+  async function ensureBackend() {
+    if (!state.apiBase && IS_STATIC_HOST) {
+      renderApiNotice(
+        "warn",
+        "当前页面部署在静态托管（GitHub Pages）上，只能展示界面，无法直接完成转写。" +
+        "请在上方「后端服务」中填入你自建后端的公网地址后重试。"
+      );
+      toast("未配置后端地址，无法提交任务", "err");
+      $("#apiBaseInput").focus();
+      return false;
+    }
+    return true;
   }
 
   async function loadConfig() {
@@ -220,6 +410,7 @@
     const urls = extractUrls(raw);
     if (!urls.length) { toast("请先粘贴视频链接", "err"); return; }
     if (urls.length > 1) { toast("一次只能处理一个链接，已使用第一个", "err"); }
+    if (!(await ensureBackend())) return;
 
     const btn = $("#startLinkBtn");
     setBusy(btn, true);
@@ -283,6 +474,7 @@
 
   async function startFileTask(file) {
     if (!file) { toast("请先选择视频或音频文件", "err"); return; }
+    if (!(await ensureBackend())) return;
     const btn = $("#startFileBtn");
     setBusy(btn, true);
     try {
@@ -577,10 +769,12 @@
     const bar = $("#audioBar");
     const audio = $("#audioPlayer");
     if (payload.media_url) {
+      // 后端返回的媒体地址可能是相对路径，需补上配置的后端地址
+      const src = /^https?:\/\//i.test(payload.media_url) ? payload.media_url : apiUrl(payload.media_url);
       bar.hidden = false;
-      if (audio.dataset.src !== payload.media_url) {
-        audio.src = payload.media_url;
-        audio.dataset.src = payload.media_url;
+      if (audio.dataset.src !== src) {
+        audio.src = src;
+        audio.dataset.src = src;
       }
       audio.ontimeupdate = () => syncActive(audio.currentTime);
     } else {
@@ -623,8 +817,15 @@
   /* ---------------------------------------------------------------- 导出 */
   async function exportAs(fmt) {
     if (!state.taskId || !state.result) { toast("还没有可导出的结果", "err"); return; }
+    if (!(await ensureBackend())) return;
+    const exportUrl = apiUrl(`/api/tasks/${state.taskId}/export?format=${fmt}`);
     try {
-      const resp = await fetch(`/api/tasks/${state.taskId}/export?format=${fmt}`);
+      let resp;
+      try {
+        resp = await fetch(exportUrl);
+      } catch (netErr) {
+        throw new Error(connectionHint(exportUrl));
+      }
       if (!resp.ok) {
         let detail = "";
         try { detail = (await resp.json()).detail || ""; } catch (e) { /* ignore */ }
@@ -671,6 +872,10 @@
   /* ---------------------------------------------------------------- 历史 */
   async function loadHistory() {
     const box = $("#historyList");
+    if (!state.apiBase && IS_STATIC_HOST) {
+      box.innerHTML = '<div class="history-empty">未配置后端地址，暂无历史任务</div>';
+      return;
+    }
     try {
       const { payload } = await api("/api/tasks?limit=12");
       const tasks = payload.tasks || [];
@@ -707,12 +912,14 @@
         box.appendChild(item);
       });
     } catch (err) {
-      box.innerHTML = '<div class="history-empty">历史记录读取失败</div>';
+      box.innerHTML = '<div class="history-empty">历史记录读取失败：' +
+        escapeHtml(String(err.message)) + "</div>";
     }
   }
 
   /* ---------------------------------------------------------------- 初始化 */
   function init() {
+    initApiPanel();
     initTheme();
     initTabs();
     initLinkPane();

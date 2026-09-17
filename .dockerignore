@@ -1,0 +1,39 @@
+# ==============================================================================
+#  .dockerignore · 只把运行必需的代码送进构建上下文
+# ==============================================================================
+
+# 密钥与本地配置（切勿打进镜像）
+.env
+.env.*
+!.env.example
+
+# 用户数据与模型缓存
+data/
+.voxscript/
+models/
+.cache/
+downloads/
+*.log
+
+# Python 缓存与虚拟环境
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 文档（README 等无需进镜像，需要时去掉本行）
+README.md
+Dockerfile
+.dockerignore

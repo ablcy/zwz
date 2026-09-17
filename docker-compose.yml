@@ -1,0 +1,26 @@
+services:
+  voxscript:
+    build: .
+    image: voxscript:latest
+    container_name: voxscript
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # 把 .env 里的配置注入容器（Model / HF_TOKEN / Cookie 等）
+    # 旧版 Compose 请改成单行写法：env_file: - .env
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # 容器内必须监听 0.0.0.0，否则外部访问不到
+      VOXSCRIPT_HOST: 0.0.0.0
+      VOXSCRIPT_PORT: "8000"
+      VOXSCRIPT_DATA_DIR: /app/data
+      # GitHub Pages 页面调用本后端时需放开跨域；收紧时可改成具体域名
+      CORS_ORIGINS: "https://ablcy.github.io"
+    volumes:
+      # 任务数据 + 模型缓存，避免容器重建后重新下载模型
+      - voxscript-data:/app/data
+
+volumes:
+  voxscript-data:

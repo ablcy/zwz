@@ -24,7 +24,6 @@ from typing import Optional
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
-from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import settings
@@ -45,10 +44,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Filename"],
 )
 
 settings.ensure_dirs()
@@ -319,10 +319,42 @@ def _url_quote(text: str) -> str:
 
 # ==========================================================================
 #  前端静态资源（放在最后，避免抢占 /api 路由）
+#
+#  说明：这里**不**用 StaticFiles 挂载整个目录，而是按白名单逐个文件返回。
+#  原因：挂载整目录会让 web 根目录包含后端源码与配置文件（.py / .env 等），
+#  在 nginx / gunicorn 等部署环境下可能被直接下载，造成源码与密钥泄露。
+#  页面文件位于 docs/（同时作为 GitHub Pages 的 /docs 发布目录）。
 # ==========================================================================
-if settings.frontend_dir.exists():
-    app.mount("/", StaticFiles(directory=str(settings.frontend_dir), html=True), name="frontend")
-else:  # pragma: no cover
-    @app.get("/")
-    def _missing_frontend() -> dict:
-        return {"error": "frontend 目录不存在，请确认项目完整性"}
+_FRONTEND_FILES: dict[str, str] = {
+    "index.html": "text/html; charset=utf-8",
+    "styles.css": "text/css; charset=utf-8",
+    "app.js": "application/javascript; charset=utf-8",
+    "config.js": "application/javascript; charset=utf-8",
+    "favicon.svg": "image/svg+xml",
+    ".nojekyll": "text/plain; charset=utf-8",
+}
+
+
+def _frontend_response(filename: str) -> FileResponse:
+    media_type = _FRONTEND_FILES.get(filename)
+    root = settings.frontend_dir.resolve()
+    target = (root / filename).resolve() if media_type else None
+    if (
+        media_type is None
+        or target is None
+        or target.parent != root  # 阻断目录穿越
+        or not target.is_file()
+    ):
+        raise HTTPException(status_code=404, detail="资源不存在")
+    return FileResponse(target, media_type=media_type, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/", include_in_schema=False)
+def index_page() -> FileResponse:
+    return _frontend_response("index.html")
+
+
+@app.get("/{filename}", include_in_schema=False)
+def frontend_asset(filename: str) -> FileResponse:
+    """仅暴露白名单内的静态文件，其余一律 404（不会泄露后端源码与配置）。"""
+    return _frontend_response(filename)
