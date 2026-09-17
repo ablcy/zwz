@@ -1,0 +1,30 @@
+# ============================================================
+#  VoxScript 声刻 · 视频口播/字幕转文字工具
+#  安装：pip install -r requirements.txt
+#  注意：torch / torchaudio 请按你的显卡驱动选择合适版本，见 README「安装」章节
+# ============================================================
+
+# ---------- Web 服务 ----------
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+pydantic>=2.6.0
+python-dotenv>=1.0.1
+requests>=2.31.0
+
+# ---------- 视频下载 ----------
+yt-dlp>=2024.8.6
+
+# ---------- 语音转文字（本地引擎） ----------
+faster-whisper>=1.0.3
+
+# ---------- 说话人分离 ----------
+# 需要 HuggingFace Token 并接受模型协议，详见 README
+pyannote.audio>=3.1.1
+torch>=2.1.0
+torchaudio>=2.1.0
+
+# ---------- 音频处理辅助 ----------
+# ffmpeg 可执行文件缺失时的自动兜底（可选，装了更省心）
+imageio-ffmpeg>=0.4.9
+（内容由AI生成，仅供参考）
