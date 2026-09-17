@@ -2,12 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 0a9ed6357c9369e0c26fb6fb5f43e499_9f3555fab25211f1ab3f52540024e231
-    ReservedCode1: ptBvR5bTFTIDJMyOxOtaNUBaDHTF3M8eFDU0Z6/WPUpOrGtS/wu3rIcshr2nwHlxbmZ78P8g+PnHFpwLCl/sFNpYd2M5gcS8cVs1BF5qcACdiCE5vSaaG7zYg6vat1Hnxf9SlDYB/RbaVOTp3dvg0YVThPfHcFG6f7t304clMIWEm2MVeUtshR5P3iE=
+    ProduceID: 0a9ed6357c9369e0c26fb6fb5f43e499_3ae8f226b25c11f1b2fa525400638852
+    ReservedCode1: BnpWtFI8TZYKdQYxZ0cOw8E+Jx8N2niDanmU5Ruv7ZytIXDDM6heFeie9dsVeoHOLYIpzVDlPiNBHoh7uBFAoGRj7zBvBFU7lPyRI85y4+J9MRSQDQcnmLrI7xnvqd3zLJdl9UnbGWa0313RW2UFM1XI6HaPc1qZc4jQ7MIJNHB4nNoCLfrhnw2WBg0=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 0a9ed6357c9369e0c26fb6fb5f43e499_9f3555fab25211f1ab3f52540024e231
-    ReservedCode2: ptBvR5bTFTIDJMyOxOtaNUBaDHTF3M8eFDU0Z6/WPUpOrGtS/wu3rIcshr2nwHlxbmZ78P8g+PnHFpwLCl/sFNpYd2M5gcS8cVs1BF5qcACdiCE5vSaaG7zYg6vat1Hnxf9SlDYB/RbaVOTp3dvg0YVThPfHcFG6f7t304clMIWEm2MVeUtshR5P3iE=
+    PropagateID: 0a9ed6357c9369e0c26fb6fb5f43e499_3ae8f226b25c11f1b2fa525400638852
+    ReservedCode2: BnpWtFI8TZYKdQYxZ0cOw8E+Jx8N2niDanmU5Ruv7ZytIXDDM6heFeie9dsVeoHOLYIpzVDlPiNBHoh7uBFAoGRj7zBvBFU7lPyRI85y4+J9MRSQDQcnmLrI7xnvqd3zLJdl9UnbGWa0313RW2UFM1XI6HaPc1qZc4jQ7MIJNHB4nNoCLfrhnw2WBg0=
 ---
+
+
 
 # 声刻 VoxScript · 视频口播 / 字幕转文字工具
 
@@ -495,3 +497,4 @@ CPU 上 `small` 处理 10 分钟音频约需 3–8 分钟。可换 `tiny` / `bas
 请仅对你**有权处理**的音视频内容使用本工具（如自己的作品、已获授权的素材）。
 下载与转写他人内容可能涉及平台服务条款与著作权限制，请自行确认合规性。
 素材只会上传到你**自己部署的后端**（选用 `openai` 远程识别引擎时，音频片段会发送给对应的识别服务商）。
+*（内容由AI生成，仅供参考）*

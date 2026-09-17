@@ -270,6 +270,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .input-wrap.small { min-height: 38px; padding: 0 10px 0 11px; flex: 0 0 240px; }
+/* 后端地址框误填视频链接后，引导用户聚焦「视频链接」输入框时的高亮 */
+.input-wrap.is-flash {
+  border-color: color-mix(in srgb, var(--accent-2) 68%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-2) 20%, transparent);
+}
 .input-ico { color: var(--muted); flex: none; }
 .input-wrap input {
   flex: 1; min-width: 0; height: 100%;

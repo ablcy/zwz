@@ -90,7 +90,10 @@
   function resolveApiBase() {
     let query = null;
     try { query = new URLSearchParams(location.search).get("api"); } catch (e) { query = null; }
-    if (query !== null) {
+    if (query !== null && isVideoShareLink(query)) {
+      // 分享的链接里误把视频地址写成了 api 参数：忽略且不落盘，避免污染本地后端配置
+      rejectedApiQuery = query;
+    } else if (query !== null) {
       const base = normalizeBase(query);
       try { localStorage.setItem(API_BASE_KEY, base); } catch (e) { /* 忽略存储失败 */ }
       return base;
@@ -110,6 +113,56 @@
   function baseHostLabel() {
     if (!state.apiBase) return "同源";
     try { return new URL(state.apiBase).host; } catch (e) { return state.apiBase; }
+  }
+
+  /* ------------------------------- 视频链接防呆（后端地址框误填视频分享链接） */
+  // 已知视频平台域名（含分享短链域）：命中即判定"明显是视频分享链接"
+  const VIDEO_SHARE_DOMAINS = [
+    "douyin.com", "iesdouyin.com", "tiktok.com",            // 抖音 / TikTok
+    "xhslink.com", "xiaohongshu.com",                       // 小红书
+    "b23.tv", "bilibili.com", "acg.tv",                     // 哔哩哔哩
+    "kuaishou.com", "gifshow.com",                          // 快手
+    "youtube.com", "youtu.be",                              // YouTube
+    "weibo.com", "weibo.cn", "ixigua.com", "v.qq.com",      // 微博 / 西瓜 / 腾讯视频
+    "youku.com", "iqiyi.com", "channels.weixin.qq.com"      // 优酷 / 爱奇艺 / 视频号
+  ];
+  const VIDEO_LINK_HINT = "这是视频链接，请填到上方的视频链接输入框；此处需填写后端 API 地址";
+
+  // 「?api=」里被判定为视频链接的地址：忽略后仍要给用户提示
+  let rejectedApiQuery = null;
+
+  function isVideoShareLink(value) {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return false;
+    let host = "";
+    try {
+      const url = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw.replace(/^\/+/, ""));
+      host = url.hostname.toLowerCase().replace(/^www\./, "");
+    } catch (e) {
+      return false;
+    }
+    return VIDEO_SHARE_DOMAINS.some((d) => host === d || host.endsWith("." + d));
+  }
+
+  // 引导用户回到正确的「视频链接」输入框：切回链接页签 + 聚焦 + 短暂高亮
+  function focusVideoLinkInput() {
+    const tabBtn = $('.seg-btn[data-tab="link"]');
+    if (tabBtn && !tabBtn.classList.contains("is-active")) tabBtn.click();
+    const urlInput = $("#urlInput");
+    if (!urlInput) return;
+    urlInput.focus();
+    const wrap = urlInput.closest(".input-wrap") || urlInput;
+    wrap.classList.add("is-flash");
+    setTimeout(() => wrap.classList.remove("is-flash"), 1600);
+  }
+
+  // 后端地址框里填的是视频链接：不保存该值，清空输入框，提示并引导到视频链接框
+  function rejectVideoLinkInApiInput() {
+    const input = $("#apiBaseInput");
+    if (input) input.value = "";
+    renderApiNotice("error", VIDEO_LINK_HINT);
+    toast(VIDEO_LINK_HINT, "err");
+    focusVideoLinkInput();
   }
 
   /* 把"连不上后端"翻译成用户能看懂、能照做的提示（不静默失败） */
@@ -277,6 +330,11 @@
 
     $("#apiSaveBtn").addEventListener("click", () => {
       const raw = input.value.trim();
+      if (isVideoShareLink(raw)) {
+        // 误把视频分享链接当后端地址：不保存、清空、提示并引导到「视频链接」输入框
+        rejectVideoLinkInApiInput();
+        return;
+      }
       if (raw && !/^https?:\/\//i.test(raw) && !/^[\w.-]+(:\d+)?(\/|$)/.test(raw)) {
         toast("地址格式看起来不对，请填完整地址，例如 https://api.example.com", "err");
         return;
@@ -958,7 +1016,10 @@
       $("#" + id).addEventListener("change", () => updateAdvSummary(null));
     });
 
-    checkHealth();
+    checkHealth().then(() => {
+      // 「?api=」被判为视频链接而忽略时，在连通性检查之后落提示，避免被健康检查结果覆盖
+      if (rejectedApiQuery) renderApiNotice("error", VIDEO_LINK_HINT);
+    });
     loadConfig();
     loadHistory();
     setInterval(checkHealth, 60000);
